@@ -883,9 +883,9 @@ def world_orientation_to_camera(orientation_euler, view_matrix):
     # 计算相机坐标系中的旋转矩阵
     camera_rot_matrix = np.dot(view_rotation, rot_matrix)
     
-    # 转回欧拉角表示
-    camera_quat = p.getQuaternionFromMatrix(camera_rot_matrix.flatten())
-    camera_euler = p.getEulerFromQuaternion(camera_quat)
+    # 直接使用euler_from_matrix获取欧拉角
+    from pybullet_utils.transformations import euler_from_matrix
+    camera_euler = euler_from_matrix(camera_rot_matrix, axes='sxyz')  # 使用sxyz约定，与PyBullet一致
     
     return camera_euler
 
