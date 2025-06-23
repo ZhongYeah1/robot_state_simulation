@@ -14,7 +14,6 @@ import csv
 from PIL import Image
 from surrol.const import ROOT_DIR_PATH
 from surrol.utils.pybullet_utils import robot_state_to_camera, world_to_camera_position, world_orientation_to_camera
-                    
 
 parser = argparse.ArgumentParser(description='generate demonstrations for imitation')
 # parser.add_argument('--env', type=str, required=True,
