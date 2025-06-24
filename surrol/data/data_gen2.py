@@ -49,7 +49,7 @@ SAMPLES_PER_TASK = 100
 """
 CSV文件格式说明:
 每个CSV文件(label_{video_index}.csv)对应一个任务轨迹，其中每一行表示一个时间步下机器人的状态。
-每行包含19个值，分别是:
+每行包含16个值，分别是:
 
 1-7: 机器人状态（相机坐标系）:
    1. pos_x: 机器人末端在相机坐标系下的X坐标
@@ -71,15 +71,10 @@ CSV文件格式说明:
    12. obj_pos_y: 目标物体在相机坐标系下的Y坐标  
    13. obj_pos_z: 目标物体在相机坐标系下的Z坐标
 
-14-16: 目标物体朝向（相机坐标系,若无: (0, 0, 0)):
-   14. obj_rot_x: 目标物体在相机坐标系下的roll角
-   15. obj_rot_y: 目标物体在相机坐标系下的pitch角
-   16. obj_rot_z: 目标物体在相机坐标系下的yaw角
-
-17-19: 目标点位置（相机坐标系）:
-   17. goal_pos_x: 目标点在相机坐标系下的X坐标
-   18. goal_pos_y: 目标点在相机坐标系下的Y坐标
-   19. goal_pos_z: 目标点在相机坐标系下的Z坐标
+14-16: 目标点位置（相机坐标系）:
+   14. goal_pos_x: 目标点在相机坐标系下的X坐标
+   15. goal_pos_y: 目标点在相机坐标系下的Y坐标
+   16. goal_pos_z: 目标点在相机坐标系下的Z坐标
 
 注意:
 - 所有坐标和方向都是在相机坐标系下表示的（而不是世界坐标系）
@@ -113,6 +108,7 @@ def main():
         # 为当前任务创建环境
         env = gym.make(task_name, render_mode='human')
         
+        '''
         # 打印observation space和action space
         print("\nObservation Space:")
         print(f"类型: {type(env.observation_space)}")
@@ -123,6 +119,7 @@ def main():
         print(f"结构: {env.action_space}")
         print(f"动作范围: {env.action_space.low} 到 {env.action_space.high}" 
               if hasattr(env.action_space, 'low') else "")
+        '''
         
         # 如果是Dict观察空间，打印更详细信息
         if hasattr(env.observation_space, 'spaces'):
@@ -184,16 +181,18 @@ def main():
                     for state in robot_states:
                         writer.writerow(state)
                 
+                '''
                 # 创建并保存视频文件
                 film_filename = os.path.join(film_base_folder, f"video_{video_index}.mp4")
                 writer = imageio.get_writer(film_filename, fps=20)
                 for img in current_images:
                     writer.append_data(img)
                 writer.close()
+                '''
                 
                 print(f"保存了 {len(current_images)} 帧图像和 {len(robot_states)} 个状态向量")
                 print(f"图像保存到: {video_folder}")
-                print(f"视频保存到: {film_filename}")
+                # print(f"视频保存到: {film_filename}")
                 print(f"状态向量保存到: {csv_filename}")
                 if len(current_images) != len(robot_states):
                     print(f"警告：图像({len(current_images)})和状态向量({len(robot_states)})数量不匹配!")
@@ -258,13 +257,14 @@ def goToGoal(env, last_obs, robot_states=None, current_images=None, task_encodin
                     
                     # 2. 目标物体位置和朝向 (世界坐标系)
                     object_world_pos = None
-                    object_world_ori = None
+                    # object_world_ori = None
                     
                     # 根据不同任务类型获取物体信息
                     if len(obs['observation']) >= 10:  # 确保有物体位置信息
                         # 物体位置通常在索引7:10
                         object_world_pos = obs['observation'][7:10]
                         
+                        '''
                         # 获取物体朝向
                         if 'NeedleReach' in env.spec.id or 'NeedlePick' in env.spec.id:
                             # 对于针的任务，朝向可以从物体链接获取
@@ -296,6 +296,7 @@ def goToGoal(env, last_obs, robot_states=None, current_images=None, task_encodin
                         # 如果没有物体信息，使用零向量
                         object_world_pos = [0, 0, 0]
                         object_world_ori = [0, 0, 0]
+                    '''
                     
                     # 3. 目标点位置 (世界坐标系)
                     goal_world_pos = obs['desired_goal']
@@ -306,26 +307,24 @@ def goToGoal(env, last_obs, robot_states=None, current_images=None, task_encodin
                     else:
                         object_camera_pos = np.zeros(3)
                         
-                    if object_world_ori is not None:
-                        object_camera_ori = world_orientation_to_camera(object_world_ori, view_matrix)
-                    else:
-                        object_camera_ori = np.zeros(3)
+                    # if object_world_ori is not None:
+                    #     object_camera_ori = world_orientation_to_camera(object_world_ori, view_matrix)
+                    # else:
+                    #     object_camera_ori = np.zeros(3)
                     
                     goal_camera_pos = world_to_camera_position(goal_world_pos, view_matrix)
                     
                     # 5. 组合成19维向量
-                    # [7维机器人状态 + 3维任务编码 + 3维物体位置 + 3维物体朝向 + 3维目标点位置]
+                    # [7维机器人状态 + 3维任务编码 + 3维物体位置 + 3维目标点位置]
                     full_state = (camera_state.tolist() + 
                                  task_encoding + 
                                  object_camera_pos.tolist() + 
-                                 list(object_camera_ori) + 
+                                 # list(object_camera_ori) + 
                                  goal_camera_pos.tolist())
                     
                     robot_states.append(full_state)
         
         obs, reward, done, info = env.step(action)
-        
-        print(f" -> robot_state: {obs['observation'][:7]}, \nreward: {reward}\n")
         
         time_step += 1
         
