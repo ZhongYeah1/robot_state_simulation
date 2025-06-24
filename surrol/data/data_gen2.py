@@ -164,10 +164,10 @@ def main():
             task_encoding = TASK_ENCODINGS[task_name]
             
             # 收集轨迹
-            goToGoal(env, obs, robot_states, current_images, task_encoding, actions, observations, infos)
+            success = goToGoal(env, obs, robot_states, current_images, task_encoding, actions, observations, infos)
             
             # 如果启用了视频录制并成功完成了任务
-            if args.video and len(actions) > cnt:  # 说明任务成功了
+            if args.video and success:  # 说明任务成功了
                 # 保存这个序列的每一帧图像
                 for i, img in enumerate(current_images):
                     img_filename = os.path.join(video_folder, f"img_{i}.png")
@@ -343,6 +343,8 @@ def goToGoal(env, last_obs, robot_states=None, current_images=None, task_encodin
             observations.append(episode_obs)
         if infos is not None:
             infos.append(episode_info)
+
+    return success
 
 if __name__ == "__main__":
     main()
