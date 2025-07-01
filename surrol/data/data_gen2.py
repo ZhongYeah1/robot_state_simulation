@@ -94,14 +94,14 @@ def main():
     # 创建存储目录
     base_folder = os.path.join(ROOT_DIR_PATH, 'data')
     video_base_folder = os.path.join(base_folder, 'video')  # 视频每帧
-    film_base_folder = os.path.join(base_folder, 'film')    # 视频
+    # film_base_folder = os.path.join(base_folder, 'film')    # 视频
     label_folder = os.path.join(base_folder, 'label')
-    label_npz_folder = os.path.join(base_folder, 'label_npz')
+    # label_npz_folder = os.path.join(base_folder, 'label_npz')
     
     os.makedirs(video_base_folder, exist_ok=True)
-    os.makedirs(film_base_folder, exist_ok=True)
+    # os.makedirs(film_base_folder, exist_ok=True)
     os.makedirs(label_folder, exist_ok=True)
-    os.makedirs(label_npz_folder, exist_ok=True)
+    # os.makedirs(label_npz_folder, exist_ok=True)
 
     # 开始收集所有任务数据
     for task_idx, task_name in enumerate(TASKS):
@@ -200,6 +200,7 @@ def main():
                 print(f"图像保存到: {video_folder}")
                 # print(f"视频保存到: {film_filename}")
                 print(f"状态向量保存到: {csv_filename}")
+                print()
                 if len(current_images) != len(robot_states):
                     print(f"警告：图像({len(current_images)})和状态向量({len(robot_states)})数量不匹配!")
                 
@@ -208,6 +209,7 @@ def main():
             
             cnt += 1
         
+        '''
         # 保存当前任务的数据到npz文件
         file_name = f"data_{task_name}_{init_state_space}_{num_itr}_{start_index}-{video_index-1}.npz"
         folder = 'demo' if not args.video else 'label_npz'
@@ -219,11 +221,12 @@ def main():
         if args.video and len(masks) > 0:
             mask_name = f"mask_{task_name}.npz"
             np.savez_compressed(os.path.join(folder, mask_name), masks=masks)
-        
+        '''
         used_time = time.time() - init_time
-        print(f"任务 {task_name} 数据保存在: {folder}")
+        print(f"task {task_name} finished")
         print("Time used: {:.1f}m, {:.1f}s\n".format(used_time // 60, used_time % 60))
         print(f"Trials: {num_itr}/{cnt}")
+        print()
         
         # 关闭当前环境
         env.close()
@@ -289,7 +292,7 @@ def goToGoal(env, last_obs, robot_states=None, current_images=None, task_encodin
         episode_acs.append(action)
         episode_info.append(info)
         episode_obs.append(obs)
-    print("Episode time used: {:.2f}s\n".format(time.time() - episode_init_time))
+    print("Episode time used: {:.2f}s".format(time.time() - episode_init_time))
     
     if success and actions is not None:
         actions.append(episode_acs)
