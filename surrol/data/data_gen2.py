@@ -13,7 +13,7 @@ import imageio
 import csv
 from PIL import Image
 from surrol.const import ROOT_DIR_PATH
-from surrol.utils.pybullet_utils import robot_state_to_camera, world_to_camera_position, world_orientation_to_camera
+from surrol.utils.pybullet_utils import robot_state_to_camera, world_to_camera_position, world_orientation_to_camera, get_all_object_info_in_camera
 
 parser = argparse.ArgumentParser(description='generate demonstrations for imitation')
 # parser.add_argument('--env', type=str, required=True,
@@ -49,7 +49,7 @@ SAMPLES_PER_TASK = 100
 """
 CSV文件格式说明:
 每个CSV文件(label_{video_index}.csv)对应一个任务轨迹，其中每一行表示一个时间步下机器人的状态。
-每行包含16个值，分别是:
+每行包含19个值，分别是:
 
 1-7: 机器人状态（相机坐标系）:
    1. pos_x: 机器人末端在相机坐标系下的X坐标
@@ -71,15 +71,21 @@ CSV文件格式说明:
    12. obj_pos_y: 目标物体在相机坐标系下的Y坐标  
    13. obj_pos_z: 目标物体在相机坐标系下的Z坐标
 
-14-16: 目标点位置（相机坐标系）:
-   14. goal_pos_x: 目标点在相机坐标系下的X坐标
-   15. goal_pos_y: 目标点在相机坐标系下的Y坐标
-   16. goal_pos_z: 目标点在相机坐标系下的Z坐标
+14-16: 目标物体朝向（相机坐标系，欧拉角）:
+   14. obj_rot_x: 目标物体在相机坐标系下的roll角
+   15. obj_rot_y: 目标物体在相机坐标系下的pitch角
+   16. obj_rot_z: 目标物体在相机坐标系下的yaw角
+
+17-19: 目标点位置（相机坐标系）:
+   17. goal_pos_x: 目标点在相机坐标系下的X坐标
+   18. goal_pos_y: 目标点在相机坐标系下的Y坐标
+   19. goal_pos_z: 目标点在相机坐标系下的Z坐标
 
 注意:
 - 所有坐标和方向都是在相机坐标系下表示的（而不是世界坐标系）
 - CSV文件中的行数应与对应视频文件夹(video_{video_index})中的图像数量一致
 - 每行状态向量与同一时间步的图像帧一一对应
+- 物体朝向以欧拉角形式表示（roll, pitch, yaw），单位为弧度
 """
 
 def main():
@@ -255,71 +261,19 @@ def goToGoal(env, last_obs, robot_states=None, current_images=None, task_encodin
                     world_state = obs['observation'][:7]
                     camera_state = robot_state_to_camera(world_state, view_matrix)
                     
-                    # 2. 目标物体位置和朝向 (世界坐标系)
-                    object_world_pos = None
-                    # object_world_ori = None
-                    
-                    # 根据不同任务类型获取物体信息
-                    if len(obs['observation']) >= 10:  # 确保有物体位置信息
-                        # 物体位置通常在索引7:10
-                        object_world_pos = obs['observation'][7:10]
-                        
-                        '''
-                        # 获取物体朝向
-                        if 'NeedleReach' in env.spec.id or 'NeedlePick' in env.spec.id:
-                            # 对于针的任务，朝向可以从物体链接获取
-                            if hasattr(env, 'obj_id') and hasattr(env, 'obj_link1'):
-                                _, object_quat = p.getLinkState(env.obj_id, env.obj_link1)[4:6]  # 世界坐标系下的朝向
-                                object_world_ori = p.getEulerFromQuaternion(object_quat)
-                            else:
-                                object_world_ori = [0, 0, 0]  # 默认值
-                        
-                        elif 'GauzeRetrieve' in env.spec.id:
-                            # 对于纱布任务，朝向从基础位置获取
-                            if hasattr(env, 'obj_id'):
-                                _, object_quat = p.getBasePositionAndOrientation(env.obj_id)[1]
-                                object_world_ori = p.getEulerFromQuaternion(object_quat)
-                            else:
-                                object_world_ori = [0, 0, 0]
-                        
-                        elif 'PegTransfer' in env.spec.id:
-                            # 对于方块任务，朝向从基础位置获取
-                            if hasattr(env, 'obj_id'):
-                                _, object_quat = p.getBasePositionAndOrientation(env.obj_id)[1]
-                                object_world_ori = p.getEulerFromQuaternion(object_quat)
-                            else:
-                                object_world_ori = [0, 0, 0]
-                        else:
-                            # 默认情况
-                            object_world_ori = [0, 0, 0]
-                    else:
-                        # 如果没有物体信息，使用零向量
-                        object_world_pos = [0, 0, 0]
-                        object_world_ori = [0, 0, 0]
-                    '''
+                    # 2. 获取物体的位置和朝向 (世界坐标系 -> 相机坐标系)
+                    object_camera_pos, object_camera_ori = get_all_object_info_in_camera(env, view_matrix)
                     
                     # 3. 目标点位置 (世界坐标系)
                     goal_world_pos = obs['desired_goal']
-                    
-                    # 4. 转换到相机坐标系
-                    if object_world_pos is not None:
-                        object_camera_pos = world_to_camera_position(object_world_pos, view_matrix)
-                    else:
-                        object_camera_pos = np.zeros(3)
-                        
-                    # if object_world_ori is not None:
-                    #     object_camera_ori = world_orientation_to_camera(object_world_ori, view_matrix)
-                    # else:
-                    #     object_camera_ori = np.zeros(3)
-                    
                     goal_camera_pos = world_to_camera_position(goal_world_pos, view_matrix)
                     
-                    # 5. 组合成19维向量
-                    # [7维机器人状态 + 3维任务编码 + 3维物体位置 + 3维目标点位置]
+                    # 4. 组合成19维向量
+                    # [7维机器人状态 + 3维任务编码 + 3维物体位置 + 3维物体朝向 + 3维目标点位置]
                     full_state = (camera_state.tolist() + 
                                  task_encoding + 
                                  object_camera_pos.tolist() + 
-                                 # list(object_camera_ori) + 
+                                 object_camera_ori.tolist() + 
                                  goal_camera_pos.tolist())
                     
                     robot_states.append(full_state)

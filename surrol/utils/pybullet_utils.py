@@ -862,7 +862,7 @@ def render_image(width, height, view_matrix, proj_matrix, shadow=1):
 # Next three functions: World to Camera Transformations
 def world_to_camera_position(position, view_matrix):
     """将世界坐标系中的位置转换为相机坐标系下的位置"""
-    # 扩展为齐次坐标
+    # 扩展为齐 homogeneous 坐标
     pos_world = np.append(position, 1.0)
     
     # 世界坐标 -> 相机坐标，使用视图矩阵
@@ -885,7 +885,7 @@ def world_orientation_to_camera(orientation_euler, view_matrix):
     
     # 直接使用euler_from_matrix获取欧拉角
     from pybullet_utils.transformations import euler_from_matrix
-    camera_euler = euler_from_matrix(camera_rot_matrix, axes='sxyz')  # 使用sxyz约定，与PyBullet一致
+    camera_euler = np.array(euler_from_matrix(camera_rot_matrix, axes='sxyz'))  # 使用sxyz约定，与PyBullet一致
     
     return camera_euler
 
@@ -915,8 +915,135 @@ def robot_state_to_camera(robot_state, view_matrix):
     # 组装转换后的robot_state
     camera_robot_state = np.concatenate([
         camera_position, 
-        np.array(camera_euler), 
+        camera_euler, 
         jaw_angle
     ])
     
     return camera_robot_state
+
+def get_object_orientation_in_camera(env, view_matrix):
+    """获取环境中物体的朝向，并转换到相机坐标系
+    
+    Args:
+        env: 环境对象
+        view_matrix: 相机视图矩阵
+        
+    Returns:
+        object_camera_ori: 物体在相机坐标系下的朝向(欧拉角)
+    """
+    object_world_ori = None
+    
+    # 根据不同任务类型获取物体朝向
+    if hasattr(env, 'spec') and env.spec is not None:
+        task_name = env.spec.id
+        
+        if 'NeedleReach' in task_name or 'NeedlePick' in task_name:
+            # 对于针的任务，朝向从物体链接获取
+            if hasattr(env, 'obj_id') and hasattr(env, 'obj_link1'):
+                try:
+                    # 使用现有的 get_link_pose 函数
+                    _, object_quat = get_link_pose(env.obj_id, env.obj_link1)
+                    object_world_ori = np.array(p.getEulerFromQuaternion(object_quat))  # 转换为numpy数组
+                except:
+                    object_world_ori = np.array([0, 0, 0])
+            else:
+                object_world_ori = np.array([0, 0, 0])
+        
+        elif 'GauzeRetrieve' in task_name:
+            # 对于纱布任务，朝向从基础位置获取
+            if hasattr(env, 'obj_id'):
+                try:
+                    # 使用现有的 get_body_pose 函数
+                    _, object_quat = get_body_pose(env.obj_id)
+                    object_world_ori = np.array(p.getEulerFromQuaternion(object_quat))  # 转换为numpy数组
+                except:
+                    object_world_ori = np.array([0, 0, 0])
+            else:
+                object_world_ori = np.array([0, 0, 0])
+        
+        elif 'PegTransfer' in task_name:
+            # 对于方块任务，朝向从基础位置获取
+            if hasattr(env, 'obj_id'):
+                try:
+                    # 使用现有的 get_body_pose 函数
+                    _, object_quat = get_body_pose(env.obj_id)
+                    object_world_ori = np.array(p.getEulerFromQuaternion(object_quat))  # 转换为numpy数组
+                except:
+                    object_world_ori = np.array([0, 0, 0])
+            else:
+                object_world_ori = np.array([0, 0, 0])
+        else:
+            # 默认情况
+            object_world_ori = np.array([0, 0, 0])
+    else:
+        # 如果没有环境规格信息，使用默认值
+        object_world_ori = np.array([0, 0, 0])
+    
+    # 转换到相机坐标系 - world_orientation_to_camera 已经返回numpy数组
+    object_camera_ori = world_orientation_to_camera(object_world_ori, view_matrix)
+    
+    return object_camera_ori
+
+
+def get_all_object_info_in_camera(env, view_matrix):
+    """获取环境中物体的完整信息(位置+朝向)，并转换到相机坐标系
+    
+    Args:
+        env: 环境对象
+        view_matrix: 相机视图矩阵
+        
+    Returns:
+        tuple: (object_camera_pos, object_camera_ori)
+            - object_camera_pos: 物体在相机坐标系下的位置 (numpy数组)
+            - object_camera_ori: 物体在相机坐标系下的朝向(欧拉角) (numpy数组)
+    """
+    object_world_pos = None
+    object_world_ori = None
+    
+    # 根据不同任务类型获取物体信息
+    if hasattr(env, 'spec') and env.spec is not None:
+        task_name = env.spec.id
+        
+        if 'NeedleReach' in task_name or 'NeedlePick' in task_name:
+            # 对于针的任务，从物体链接获取位置和朝向
+            if hasattr(env, 'obj_id') and hasattr(env, 'obj_link1'):
+                try:
+                    # 使用现有的 get_link_pose 函数
+                    object_world_pos, object_quat = get_link_pose(env.obj_id, env.obj_link1)
+                    object_world_pos = np.array(object_world_pos)  # 转换为numpy数组
+                    object_world_ori = np.array(p.getEulerFromQuaternion(object_quat))  # 转换为numpy数组
+                except:
+                    object_world_pos = np.array([0, 0, 0])
+                    object_world_ori = np.array([0, 0, 0])
+            else:
+                object_world_pos = np.array([0, 0, 0])
+                object_world_ori = np.array([0, 0, 0])
+        
+        elif 'GauzeRetrieve' in task_name or 'PegTransfer' in task_name:
+            # 对于纱布和方块任务，从基础位置获取位置和朝向
+            if hasattr(env, 'obj_id'):
+                try:
+                    # 使用现有的 get_body_pose 函数
+                    object_world_pos, object_quat = get_body_pose(env.obj_id)
+                    object_world_pos = np.array(object_world_pos)  # 转换为numpy数组
+                    object_world_ori = np.array(p.getEulerFromQuaternion(object_quat))  # 转换为numpy数组
+                except:
+                    object_world_pos = np.array([0, 0, 0])
+                    object_world_ori = np.array([0, 0, 0])
+            else:
+                object_world_pos = np.array([0, 0, 0])
+                object_world_ori = np.array([0, 0, 0])
+        else:
+            # 默认情况
+            object_world_pos = np.array([0, 0, 0])
+            object_world_ori = np.array([0, 0, 0])
+    else:
+        # 如果没有环境规格信息，使用默认值
+        object_world_pos = np.array([0, 0, 0])
+        object_world_ori = np.array([0, 0, 0])
+    
+    # 转换到相机坐标系 - 确保都返回numpy数组
+    object_camera_pos = world_to_camera_position(object_world_pos, view_matrix)
+    object_camera_ori = world_orientation_to_camera(object_world_ori, view_matrix)
+    
+    return object_camera_pos, object_camera_ori
